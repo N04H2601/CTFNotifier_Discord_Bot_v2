@@ -6,6 +6,8 @@ This is an enhanced version of a Discord bot designed to help users track Captur
 
 *   **Personal Agendas:** Each user manages their own list of CTF events.
 *   **CTFtime Integration:** Add events directly using their CTFtime URL and view upcoming events.
+*   **Custom Events:** Create your own events with `/custom` and receive the same notifications.
+*   **Share Events:** Use `/share` to add one of your events to another user's agenda.
 *   **Slash Commands:** Modern and easy-to-use interface via Discord's slash commands.
 *   **Automated Notifications:** Receive Direct Messages (DMs) for event reminders (1 hour before start), start times, and when events are ending soon (1 hour before finish).
 *   **SQLite Database:** Events are persistently stored in a local SQLite database.
@@ -76,6 +78,8 @@ Use these commands directly in Discord by typing `/`:
 
 *   `/add <ctftime_url>`: Adds a CTF event to your personal agenda using its CTFtime event URL (e.g., `https://ctftime.org/event/1234`).
 *   `/agenda`: Displays all the upcoming CTF events currently in your personal agenda.
+*   `/custom <name> <start> <end> [url] [description]`: Create a custom event.
+*   `/share <event_name> <user>`: Share one of your events with another user.
 *   `/details <event_name>`: Shows detailed information about a specific event from your agenda. Use the autocomplete feature to find event names easily.
 *   `/remove <event_name>`: Removes a specific event from your personal agenda. Use the autocomplete feature.
 *   `/clear`: Removes **ALL** events from your personal agenda after confirmation.
