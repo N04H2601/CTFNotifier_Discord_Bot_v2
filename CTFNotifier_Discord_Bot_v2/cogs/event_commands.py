@@ -98,6 +98,72 @@ class EventCommands(commands.Cog):
                 f"Event 	{event_data['event_name']}	 already exists for user {interaction.user.id}"
             )
 
+    # --- Slash Command: Create Custom Event ---
+    @app_commands.command(
+        name="custom",
+        description="Create a custom event in your personal agenda."
+    )
+    @app_commands.describe(
+        name="Name of the event",
+        start="Start time in YYYY-MM-DD HH:MM (UTC)",
+        end="End time in YYYY-MM-DD HH:MM (UTC)",
+        description="Optional description",
+        url="Optional event URL"
+    )
+    async def create_custom_event(
+        self,
+        interaction: discord.Interaction,
+        name: str,
+        start: str,
+        end: str,
+        description: str | None = None,
+        url: str | None = None,
+    ):
+        """Allows a user to create a custom event without CTFtime."""
+        await interaction.response.defer(ephemeral=True)
+
+        try:
+            start_dt = datetime.fromisoformat(start)
+            end_dt = datetime.fromisoformat(end)
+        except ValueError:
+            await interaction.followup.send(
+                "Invalid date format. Use `YYYY-MM-DD HH:MM`.",
+                ephemeral=True,
+            )
+            return
+
+        if start_dt >= end_dt:
+            await interaction.followup.send(
+                "Start time must be before end time.", ephemeral=True
+            )
+            return
+
+        event_data = {
+            "event_name": name,
+            "ctftime_url": None,
+            "url": url,
+            "start": start_dt,
+            "finish": end_dt,
+            "format": None,
+            "organizers": None,
+            "weight": None,
+            "description": description,
+            "participants": None,
+        }
+
+        success = await database.add_event_to_user(interaction.user.id, event_data)
+
+        if success:
+            embed = discord.Embed(
+                title="✅ Custom Event Added",
+                description=f"Successfully added **{name}** to your personal agenda.",
+                color=CYBER_THEME_COLOR,
+            )
+            await interaction.followup.send(embed=embed, ephemeral=True)
+        else:
+            await interaction.followup.send(
+                f"Event **{name}** is already in your agenda.", ephemeral=True
+            )
     # --- Slash Command: View Agenda ---
     @app_commands.command(
         name="agenda", description="Displays your personal CTF event agenda."
@@ -229,7 +295,63 @@ class EventCommands(commands.Cog):
     ) -> list[app_commands.Choice[str]]:
         return await self.event_autocomplete(interaction, current)
 
-    # --- Slash Command: Remove Event ---
+    # --- Slash Command: Share Event ---
+    @app_commands.command(
+        name="share",
+        description="Share one of your events with another user."
+    )
+    @app_commands.describe(
+        event_name="Name of the event to share",
+        user="User to share the event with"
+    )
+    @app_commands.autocomplete(event_name=event_autocomplete)
+    async def share_event(
+        self,
+        interaction: discord.Interaction,
+        event_name: str,
+        user: discord.User
+    ):
+        await interaction.response.defer(ephemeral=True)
+
+        event = await database.get_event_details(interaction.user.id, event_name)
+        if not event:
+            await interaction.followup.send(
+                f"Event `{event_name}` not found in your agenda.", ephemeral=True
+            )
+            return
+
+        event_data = {
+            "event_name": event["event_name"],
+            "ctftime_url": event.get("ctftime_url"),
+            "url": event.get("event_url"),
+            "start": event["start_time"],
+            "finish": event["end_time"],
+            "format": event.get("format"),
+            "organizers": event.get("organizers"),
+            "weight": event.get("weight"),
+            "description": event.get("description"),
+            "participants": event.get("participants"),
+        }
+
+        success = await database.add_event_to_user(user.id, event_data)
+        if success:
+            try:
+                embed = discord.Embed(
+                    title="📅 Event Shared",
+                    description=f"{interaction.user.mention} shared **{event_name}** with you.",
+                    color=CYBER_THEME_COLOR,
+                )
+                await user.send(embed=embed)
+            except Exception:
+                pass
+            await interaction.followup.send(
+                f"Shared **{event_name}** with {user.mention}.", ephemeral=True
+            )
+        else:
+            await interaction.followup.send(
+                f"{user.mention} already has **{event_name}** in their agenda.",
+                ephemeral=True,
+            )
     @app_commands.command(
         name="remove", description="Removes an event from your personal agenda."
     )
