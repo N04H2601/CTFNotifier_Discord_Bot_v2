@@ -1,6 +1,17 @@
-discord.py==2.3.1
-python-dotenv==1.0.0
-pytz==2022.1
-Requests==2.31.0
-aiosqlite==0.19.0
+# CTF Notifier Discord Bot v2 - Dependencies
+# Python 3.11+ required
 
+# Discord API
+discord.py==2.3.2
+
+# Environment variables
+python-dotenv==1.0.0
+
+# Timezone handling
+pytz==2024.1
+
+# Async HTTP client (for CTFtime API)
+aiohttp==3.9.1
+
+# Async SQLite database
+aiosqlite==0.19.0

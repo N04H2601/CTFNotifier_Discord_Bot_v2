@@ -31,7 +31,6 @@ logger.addHandler(handler)
 
 # --- Bot Setup ---
 intents = discord.Intents.default()
-bot = commands.Bot(command_prefix="!", intents=intents)
 # No message content intent needed for slash commands primarily
 # intents.message_content = True # Keep if you need on_message for other things
 
