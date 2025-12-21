@@ -1,11 +1,19 @@
 # main.py
 
 import os
+import sys
 import asyncio
 import logging
+from pathlib import Path
+
 import discord
 from discord.ext import commands
 from dotenv import load_dotenv
+
+# --- Path Setup ---
+# Ensure we can import from the correct directory
+BASE_DIR = Path(__file__).resolve().parent
+sys.path.insert(0, str(BASE_DIR))
 
 from utils import database
 
@@ -13,33 +21,38 @@ from utils import database
 load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
 if not TOKEN:
-    raise RuntimeError("DISCORD_TOKEN not loaded")
-# CHANNEL_ID is no longer needed globally, notifications will be handled differently
-# GUILD_ID = discord.Object(id=int(os.getenv("GUILD_ID"))) # Optional: If you want commands synced to one guild instantly
+    raise RuntimeError("DISCORD_TOKEN not found in environment variables. Create a .env file with DISCORD_TOKEN=your_token")
+
+# Optional: Set GUILD_ID for instant command sync (development)
+GUILD_ID = os.getenv("GUILD_ID")
 
 # --- Logging Setup ---
 logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s:%(levelname)s:%(name)s: %(message)s"
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)-8s %(name)s: %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S"
 )
-logger = logging.getLogger("discord")
-logger.setLevel(logging.INFO)  # Set discord logger level
-handler = logging.FileHandler(filename="discord_bot.log", encoding="utf-8", mode="w")
-handler.setFormatter(
-    logging.Formatter("%(asctime)s:%(levelname)s:%(name)s: %(message)s")
+logger = logging.getLogger("CTFNotifier")
+
+# File handler for persistent logs
+log_file = BASE_DIR / "discord_bot.log"
+file_handler = logging.FileHandler(filename=log_file, encoding="utf-8", mode="a")
+file_handler.setFormatter(
+    logging.Formatter("%(asctime)s %(levelname)-8s %(name)s: %(message)s")
 )
-logger.addHandler(handler)
+logging.getLogger().addHandler(file_handler)
 
 # --- Bot Setup ---
 intents = discord.Intents.default()
-# No message content intent needed for slash commands primarily
-# intents.message_content = True # Keep if you need on_message for other things
 
 
 class CTFNotifierBot(commands.Bot):
     def __init__(self):
         super().__init__(
-            command_prefix=commands.when_mentioned_or("!"), intents=intents
-        )  # Prefix is fallback, not primary
+            command_prefix=commands.when_mentioned_or("!"),
+            intents=intents
+        )
+        self.synced = False
 
     async def setup_hook(self):
         # Initialize Database
@@ -47,37 +60,54 @@ class CTFNotifierBot(commands.Bot):
         logger.info("Database initialized.")
 
         # Load Cogs
-        cogs_dir = "cogs"
+        cogs_dir = BASE_DIR / "cogs"
+        loaded_cogs = []
+        failed_cogs = []
+
         for filename in os.listdir(cogs_dir):
             if filename.endswith(".py") and not filename.startswith("__"):
+                cog_name = f"cogs.{filename[:-3]}"
                 try:
-                    await self.load_extension(f"cogs.{filename[:-3]}")
+                    await self.load_extension(cog_name)
+                    loaded_cogs.append(filename)
                     logger.info(f"Loaded cog: {filename}")
                 except Exception as e:
+                    failed_cogs.append(filename)
                     logger.error(f"Failed to load cog {filename}: {e}", exc_info=True)
 
-        # Sync commands globally (can take up to an hour)
-        # To sync instantly to one guild, uncomment GUILD_ID and use:
-        # self.tree.copy_global_to(guild=GUILD_ID)
-        # await self.tree.sync(guild=GUILD_ID)
-        await self.tree.sync()
-        logger.info("Command tree synced.")
+        logger.info(f"Cogs loaded: {len(loaded_cogs)}/{len(loaded_cogs) + len(failed_cogs)}")
+        if failed_cogs:
+            logger.warning(f"Failed cogs: {', '.join(failed_cogs)}")
+
+        # Sync commands
+        if GUILD_ID:
+            # Instant sync to specific guild (for development)
+            guild = discord.Object(id=int(GUILD_ID))
+            self.tree.copy_global_to(guild=guild)
+            await self.tree.sync(guild=guild)
+            logger.info(f"Command tree synced to guild {GUILD_ID} (instant)")
+        else:
+            # Global sync (can take up to 1 hour to propagate)
+            await self.tree.sync()
+            logger.info("Command tree synced globally (may take up to 1 hour to propagate)")
+
+        self.synced = True
 
     async def on_ready(self):
         logger.info(f"{self.user} has connected to Discord!")
+        logger.info(f"Bot ID: {self.user.id}")
+        logger.info(f"Guilds: {len(self.guilds)}")
+
+        # List all registered commands
+        commands_list = [cmd.name for cmd in self.tree.get_commands()]
+        logger.info(f"Registered commands ({len(commands_list)}): {', '.join(commands_list)}")
+
         await self.change_presence(
             activity=discord.Activity(
-                type=discord.ActivityType.watching, name="upcoming CTF events"
+                type=discord.ActivityType.watching,
+                name="CTF events | /help"
             )
         )
-        logger.info("Bot presence set.")
-
-    # Remove the old on_message listener if not needed
-    # async def on_message(self, message):
-    #     if message.author == self.user:
-    #         return
-    #     # Handle non-command messages if necessary
-    #     await self.process_commands(message) # Keep if using prefix commands too
 
 
 bot = CTFNotifierBot()
@@ -89,7 +119,8 @@ async def main():
 
 
 if __name__ == "__main__":
-    if TOKEN is None:
-        print("Error: DISCORD_TOKEN environment variable not set.")
-    else:
-        asyncio.run(main())
+    print(f"Starting CTF Notifier Bot...")
+    print(f"Base directory: {BASE_DIR}")
+    print(f"Guild ID for instant sync: {GUILD_ID or 'Not set (using global sync)'}")
+    print("-" * 50)
+    asyncio.run(main())

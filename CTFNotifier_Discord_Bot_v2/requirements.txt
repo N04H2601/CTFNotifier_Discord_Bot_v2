@@ -15,3 +15,6 @@ aiohttp==3.9.1
 
 # Async SQLite database
 aiosqlite==0.19.0
+
+# Compatibility for Python 3.13+ (audioop removed)
+audioop-lts==0.2.1
