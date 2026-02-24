@@ -29,10 +29,13 @@ CTFNotifier_Discord_Bot/
 ├── main.py               # Main bot entry point
 ├── requirements.txt      # Python dependencies
 ├── discord_bot.log       # Log file generated at runtime
+├── Dockerfile            # Added two stage build to create container on Docker
 └── README.md             # This file
 ```
 
 ## 🚀 Setup & Installation
+
+### 💻 Without docker
 
 1.  **Clone the Repository:**
     ```bash
@@ -69,6 +72,38 @@ CTFNotifier_Discord_Bot/
     python main.py
     ```
     The bot should connect to Discord, initialize the database, load commands, and start the notification service.
+
+### 🐋 With docker
+
+1.  **Clone The Repository:**
+
+```bash
+git clone https://github.com/N04H2601/CTFNotifier_Discord_Bot.git
+cd CTFNotifier_Discord_Bot
+```
+
+2. **Setup Environment Variables :**
+Create a file named `.env` in the project's root directory (`CTFNotifier_Discord_Bot/`). Add your Discord Bot Token to it:
+```dotenv
+DISCORD_TOKEN=YOUR_BOT_TOKEN_HERE
+# Optional: For faster command syncing during testing/development in a single server
+# GUILD_ID=YOUR_TEST_SERVER_ID_HERE
+```
+Replace `YOUR_BOT_TOKEN_HERE` with your actual bot token obtained from the Discord Developer Portal.
+
+3. **Build The Container:**
+
+Assuming you have Docker installed on your device :
+```sh
+docker build . -t ctfnotifier-bot-v2
+```
+
+4. **Run the container:**
+
+```sh
+docker run --name ctfnotifier --volume ctfnotifier-data:/app/data -d --network none ctfnotifier-bot-v2
+```
+> Make sure you use a volume to keep your data between builds 😉
 
 ## 🤖 Commands (Slash Commands)
 
