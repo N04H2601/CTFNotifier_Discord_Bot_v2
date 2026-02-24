@@ -22,6 +22,137 @@ class EventCommands(commands.Cog):
         self.logger = logging.getLogger(f"{__name__}")
         self.logger.info("EventCommands Cog initialized.")
 
+    async def create_team_thread(
+        self,
+        interaction: discord.Interaction,
+        event_name: str,
+        event_data: dict,
+        team_leader_id: int,
+        teammate_ids: List[int],
+    ) -> Optional[discord.Thread]:
+        """Create a private thread for the team in the server's notification channel.
+
+        Falls back to the channel where the command was invoked if no notification
+        channel is configured.
+        """
+        if not interaction.guild:
+            return None
+
+        # Get the notification channel for this server
+        server_settings = await database.get_server_settings(interaction.guild.id)
+        channel_id = server_settings.get("notification_channel_id")
+
+        channel = None
+        if channel_id:
+            try:
+                channel = self.bot.get_channel(channel_id) or await self.bot.fetch_channel(channel_id)
+            except (discord.NotFound, discord.Forbidden):
+                pass
+
+        # Fall back to the interaction channel
+        if not channel and interaction.channel:
+            channel = interaction.channel
+
+        if not channel or not hasattr(channel, 'create_thread'):
+            return None
+
+        try:
+            # Create a private thread
+            thread = await channel.create_thread(
+                name=f"CTF - {event_name}",
+                type=discord.ChannelType.private_thread,
+                reason=f"CTF team thread for {event_name}",
+            )
+
+            # Add team leader and all teammates
+            try:
+                leader = interaction.guild.get_member(team_leader_id) or await interaction.guild.fetch_member(team_leader_id)
+                if leader:
+                    await thread.add_user(leader)
+            except (discord.NotFound, discord.Forbidden):
+                pass
+
+            for tid in teammate_ids:
+                try:
+                    member = interaction.guild.get_member(tid) or await interaction.guild.fetch_member(tid)
+                    if member:
+                        await thread.add_user(member)
+                except (discord.NotFound, discord.Forbidden):
+                    self.logger.warning(f"Could not add user {tid} to thread for {event_name}")
+
+            # Send welcome message with CTF info
+            start = event_data.get("start") or event_data.get("start_time")
+            finish = event_data.get("finish") or event_data.get("end_time")
+            if isinstance(start, str):
+                start = datetime.fromisoformat(start)
+            if isinstance(finish, str):
+                finish = datetime.fromisoformat(finish)
+
+            welcome_embed = discord.Embed(
+                title=f"🛡️ {event_data.get('title', event_name)}",
+                description=(
+                    f"Welcome to the team thread for **{event_name}**!\n\n"
+                    f"This is your private space to coordinate, share resources, and discuss strategies."
+                ),
+                color=CYBER_THEME_COLOR,
+            )
+
+            if start:
+                welcome_embed.add_field(
+                    name="📅 Start",
+                    value=f"{helpers.format_discord_timestamp(start, 'F')}\n{helpers.format_discord_timestamp(start, 'R')}",
+                    inline=True,
+                )
+            if finish:
+                welcome_embed.add_field(
+                    name="🏁 End",
+                    value=f"{helpers.format_discord_timestamp(finish, 'F')}\n{helpers.format_discord_timestamp(finish, 'R')}",
+                    inline=True,
+                )
+            if start and finish:
+                welcome_embed.add_field(
+                    name="⏱️ Duration",
+                    value=helpers.calculate_duration(start, finish),
+                    inline=True,
+                )
+
+            event_format = event_data.get("format", "")
+            if event_format:
+                welcome_embed.add_field(name="🎯 Format", value=event_format, inline=True)
+
+            # Links
+            links = []
+            ctftime_url = event_data.get("ctftime_url", "")
+            official_url = event_data.get("url") or event_data.get("event_url", "")
+            if ctftime_url:
+                links.append(f"[CTFtime]({ctftime_url})")
+            if official_url:
+                links.append(f"[Official Site]({official_url})")
+            if links:
+                welcome_embed.add_field(name="🔗 Links", value=" | ".join(links), inline=False)
+
+            # Team members
+            all_members = [f"<@{team_leader_id}> (Team Leader)"]
+            all_members += [f"<@{tid}>" for tid in teammate_ids]
+            welcome_embed.add_field(
+                name="👥 Team",
+                value="\n".join(all_members),
+                inline=False,
+            )
+
+            welcome_embed.set_footer(text="Good luck! Use /writeup to add writeups after the CTF.")
+            await thread.send(embed=welcome_embed)
+
+            self.logger.info(f"Created team thread for {event_name} with {len(teammate_ids)} teammates")
+            return thread
+
+        except discord.Forbidden:
+            self.logger.warning(f"Cannot create thread in channel {channel.id} (no permission)")
+            return None
+        except Exception as e:
+            self.logger.error(f"Error creating team thread: {e}", exc_info=True)
+            return None
+
     # --- Slash Command: Add Event from CTFtime ---
     @app_commands.command(
         name="add",
@@ -136,6 +267,21 @@ class EventCommands(commands.Cog):
             )
 
         embed.set_footer(text="Use /agenda to view your events • /calendar to export")
+
+        # Create private thread for team if teammates were added
+        thread = None
+        if added_teammates and interaction.guild:
+            thread = await self.create_team_thread(
+                interaction, event_data["event_name"], event_data,
+                interaction.user.id, added_teammates
+            )
+            if thread:
+                embed.add_field(
+                    name="💬 Team Thread",
+                    value=f"Created: {thread.mention}",
+                    inline=False,
+                )
+
         await interaction.followup.send(embed=embed, ephemeral=True)
 
         # Notify teammates via DM
@@ -157,6 +303,12 @@ class EventCommands(commands.Cog):
                     value=helpers.format_discord_timestamp(event_data["finish"]),
                     inline=True,
                 )
+                if thread:
+                    dm_embed.add_field(
+                        name="💬 Team Thread",
+                        value=f"Check the team thread in the server for coordination!",
+                        inline=False,
+                    )
                 await user.send(embed=dm_embed)
             except (discord.Forbidden, discord.NotFound):
                 pass
@@ -294,6 +446,20 @@ class EventCommands(commands.Cog):
         if added_teammates:
             teammates_mentions = ", ".join([f"<@{uid}>" for uid in added_teammates])
             embed.add_field(name="👥 Teammates", value=teammates_mentions, inline=False)
+
+        # Create private thread for team if teammates were added
+        thread = None
+        if added_teammates and interaction.guild:
+            thread = await self.create_team_thread(
+                interaction, event_name, event_data,
+                interaction.user.id, added_teammates
+            )
+            if thread:
+                embed.add_field(
+                    name="💬 Team Thread",
+                    value=f"Created: {thread.mention}",
+                    inline=False,
+                )
 
         embed.set_footer(text="Custom event • Use /agenda to view your events")
         await interaction.followup.send(embed=embed, ephemeral=True)
@@ -522,11 +688,46 @@ class EventCommands(commands.Cog):
         success = await database.add_event_member(event["id"], interaction.user.id, member.id)
 
         if success:
-            await interaction.followup.send(
-                f"✅ Added {member.mention} to **{event_name}**",
-                ephemeral=True
-            )
-            # Notify the teammate
+            response_text = f"✅ Added {member.mention} to **{event_name}**"
+
+            # Check if this is the first teammate - if so, create a thread
+            all_members = await database.get_event_members(event["id"], interaction.user.id)
+            if len(all_members) == 1 and interaction.guild:
+                # First teammate added - create a team thread
+                thread = await self.create_team_thread(
+                    interaction, event_name, event,
+                    interaction.user.id, [member.id]
+                )
+                if thread:
+                    response_text += f"\n💬 Team thread created: {thread.mention}"
+            elif interaction.guild:
+                # Thread may already exist - try to add the new member to it
+                # Search for existing thread in the notification channel
+                server_settings = await database.get_server_settings(interaction.guild.id)
+                channel_id = server_settings.get("notification_channel_id")
+                channel = None
+                if channel_id:
+                    try:
+                        channel = self.bot.get_channel(channel_id) or await self.bot.fetch_channel(channel_id)
+                    except (discord.NotFound, discord.Forbidden):
+                        pass
+                if not channel and interaction.channel:
+                    channel = interaction.channel
+
+                if channel and hasattr(channel, 'threads'):
+                    thread_name = f"CTF - {event_name}"
+                    for thread in channel.threads:
+                        if thread.name == thread_name:
+                            try:
+                                await thread.add_user(member)
+                                response_text += f"\n💬 Added to team thread: {thread.mention}"
+                            except (discord.Forbidden, discord.NotFound):
+                                pass
+                            break
+
+            await interaction.followup.send(response_text, ephemeral=True)
+
+            # Notify the teammate via DM
             try:
                 start_dt = event["start_time"]
                 if isinstance(start_dt, str):
@@ -782,14 +983,8 @@ class ClearConfirmationView(discord.ui.View):
         return True
 
     async def on_timeout(self):
-        try:
-            await self.message.edit(
-                content="Confirmation timed out. Agenda was not cleared.",
-                embed=None,
-                view=None,
-            )
-        except discord.NotFound:
-            pass
+        for item in self.children:
+            item.disabled = True
         self.logger.info(f"Clear confirmation timed out for user {self.author.id}")
 
     @discord.ui.button(

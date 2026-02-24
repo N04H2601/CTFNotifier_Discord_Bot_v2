@@ -15,7 +15,7 @@ from dotenv import load_dotenv
 BASE_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(BASE_DIR))
 
-from utils import database
+from utils import database, ctftime_api
 
 # --- Configuration ---
 load_dotenv()
@@ -44,6 +44,7 @@ logging.getLogger().addHandler(file_handler)
 
 # --- Bot Setup ---
 intents = discord.Intents.default()
+intents.members = True  # Required for fetching members for teams and threads
 
 
 class CTFNotifierBot(commands.Bot):
@@ -109,8 +110,51 @@ class CTFNotifierBot(commands.Bot):
             )
         )
 
+    async def close(self):
+        """Cleanup on bot shutdown."""
+        logger.info("Bot shutting down, cleaning up...")
+        await ctftime_api.close_session()
+        await super().close()
+
 
 bot = CTFNotifierBot()
+
+
+# --- Global Error Handler for Slash Commands ---
+@bot.tree.error
+async def on_app_command_error(
+    interaction: discord.Interaction,
+    error: discord.app_commands.AppCommandError
+):
+    """Global error handler for all slash commands."""
+    if isinstance(error, discord.app_commands.CommandOnCooldown):
+        await interaction.response.send_message(
+            f"This command is on cooldown. Try again in {error.retry_after:.1f}s.",
+            ephemeral=True,
+        )
+    elif isinstance(error, discord.app_commands.MissingPermissions):
+        await interaction.response.send_message(
+            "You don't have permission to use this command.",
+            ephemeral=True,
+        )
+    else:
+        logger.error(f"Unhandled command error: {error}", exc_info=error)
+        # Try to respond to the user
+        try:
+            if interaction.response.is_done():
+                await interaction.followup.send(
+                    "An unexpected error occurred. Please try again later.",
+                    ephemeral=True,
+                )
+            else:
+                await interaction.response.send_message(
+                    "An unexpected error occurred. Please try again later.",
+                    ephemeral=True,
+                )
+        except discord.InteractionResponded:
+            pass
+        except Exception:
+            pass
 
 
 async def main():

@@ -699,7 +699,7 @@ async def cleanup_old_events(days_old: int = 365) -> int:
     Events with writeups are preserved indefinitely.
     """
     async with aiosqlite.connect(DATABASE_PATH) as db:
-        cutoff_time = datetime.utcnow() - timedelta(days=days_old)
+        cutoff_time = datetime.now(tz=__import__('pytz').utc) - timedelta(days=days_old)
 
         # Only delete events that:
         # 1. Ended more than X days ago
