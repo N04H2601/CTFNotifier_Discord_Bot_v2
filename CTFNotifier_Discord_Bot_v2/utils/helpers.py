@@ -2,6 +2,7 @@
 
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional
+import html
 import pytz
 import uuid
 import re
@@ -191,7 +192,7 @@ def generate_ical(events: List[Dict]) -> str:
         lines.extend([
             "BEGIN:VEVENT",
             f"UID:{uid}",
-            f"DTSTAMP:{datetime.utcnow().strftime('%Y%m%dT%H%M%SZ')}",
+            f"DTSTAMP:{datetime.now(tz=pytz.utc).strftime('%Y%m%dT%H%M%SZ')}",
             f"DTSTART:{start_str}",
             f"DTEND:{end_str}",
             f"SUMMARY:{_escape_ical_text(title)}",
@@ -276,3 +277,57 @@ def format_weight(weight: float) -> str:
         return f"⚪ {weight:.2f} (Very Low)"
     else:
         return "N/A"
+
+
+def clean_html(text: str, max_length: int = 1000) -> str:
+    """Clean HTML tags from text and convert to plain text for Discord display."""
+    if not text:
+        return ""
+    # Convert common HTML entities
+    text = html.unescape(text)
+    # Convert <br> and <p> to newlines
+    text = re.sub(r'<br\s*/?>', '\n', text, flags=re.IGNORECASE)
+    text = re.sub(r'</p>', '\n', text, flags=re.IGNORECASE)
+    text = re.sub(r'<p[^>]*>', '', text, flags=re.IGNORECASE)
+    # Convert links to markdown format
+    text = re.sub(r'<a[^>]*href="([^"]*)"[^>]*>(.*?)</a>', r'[\2](\1)', text, flags=re.IGNORECASE)
+    # Convert bold/strong to Discord bold
+    text = re.sub(r'<(?:b|strong)[^>]*>(.*?)</(?:b|strong)>', r'**\1**', text, flags=re.IGNORECASE)
+    # Convert italic/em to Discord italic
+    text = re.sub(r'<(?:i|em)[^>]*>(.*?)</(?:i|em)>', r'*\1*', text, flags=re.IGNORECASE)
+    # Convert lists
+    text = re.sub(r'<li[^>]*>', '- ', text, flags=re.IGNORECASE)
+    text = re.sub(r'</li>', '\n', text, flags=re.IGNORECASE)
+    # Strip remaining HTML tags
+    text = re.sub(r'<[^>]+>', '', text)
+    # Clean up multiple newlines
+    text = re.sub(r'\n{3,}', '\n\n', text)
+    text = text.strip()
+    # Truncate if needed
+    if len(text) > max_length:
+        text = text[:max_length - 3] + "..."
+    return text
+
+
+def format_team_size(event_data: dict) -> str:
+    """Format team size information from CTFtime event data."""
+    team_size = event_data.get("team_size", {})
+    min_size = team_size.get("min") or event_data.get("min_team_size")
+    max_size = team_size.get("max") or event_data.get("max_team_size")
+
+    if min_size and max_size:
+        if min_size == max_size:
+            return f"{min_size} player(s)"
+        return f"{min_size} - {max_size} players"
+    elif max_size:
+        return f"Max {max_size} players"
+    elif min_size:
+        return f"Min {min_size} players"
+    return "No limit"
+
+
+def format_restrictions(restrictions: str) -> str:
+    """Format CTFtime restrictions field."""
+    if not restrictions:
+        return "Open"
+    return restrictions

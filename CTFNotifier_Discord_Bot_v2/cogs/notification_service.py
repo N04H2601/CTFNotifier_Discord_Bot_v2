@@ -289,7 +289,7 @@ class NotificationService(commands.Cog):
                         title=f"🎉 CTF Finished: {event_name}",
                         description=(
                             f"This CTF has ended. Great job!\n\n"
-                            f"Don't forget to add your writeups with `/writeup add`!"
+                            f"Don't forget to add your writeups with `/writeup`!"
                         ),
                         color=CYBER_THEME_COLOR,
                     )

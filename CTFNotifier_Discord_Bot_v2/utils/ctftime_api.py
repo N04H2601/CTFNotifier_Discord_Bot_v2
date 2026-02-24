@@ -1,5 +1,6 @@
 # utils/ctftime_api.py
 
+import asyncio
 import json
 import logging
 from datetime import datetime
@@ -17,6 +18,51 @@ REQUEST_TIMEOUT = 10  # seconds
 _cache: dict = {}
 CACHE_TTL_SECONDS = 300  # 5 minutes
 
+# Rate limiter: max 10 requests per 60 seconds to CTFtime
+_rate_limit_lock = asyncio.Lock()
+_request_timestamps: list = []
+RATE_LIMIT_MAX_REQUESTS = 10
+RATE_LIMIT_WINDOW_SECONDS = 60
+
+# Shared session (lazily created)
+_session: Optional[aiohttp.ClientSession] = None
+
+
+async def _get_session() -> aiohttp.ClientSession:
+    """Get or create a shared aiohttp session."""
+    global _session
+    if _session is None or _session.closed:
+        timeout = aiohttp.ClientTimeout(total=REQUEST_TIMEOUT)
+        _session = aiohttp.ClientSession(timeout=timeout, headers=HEADERS)
+    return _session
+
+
+async def close_session():
+    """Close the shared session (call on bot shutdown)."""
+    global _session
+    if _session and not _session.closed:
+        await _session.close()
+        _session = None
+
+
+async def _check_rate_limit():
+    """Wait if we're approaching the rate limit."""
+    async with _rate_limit_lock:
+        now = datetime.now()
+        # Remove timestamps older than the window
+        _request_timestamps[:] = [
+            ts for ts in _request_timestamps
+            if (now - ts).total_seconds() < RATE_LIMIT_WINDOW_SECONDS
+        ]
+        if len(_request_timestamps) >= RATE_LIMIT_MAX_REQUESTS:
+            # Wait until the oldest request expires from the window
+            oldest = _request_timestamps[0]
+            wait_time = RATE_LIMIT_WINDOW_SECONDS - (now - oldest).total_seconds()
+            if wait_time > 0:
+                logging.warning(f"CTFtime API rate limit reached, waiting {wait_time:.1f}s")
+                await asyncio.sleep(wait_time)
+        _request_timestamps.append(datetime.now())
+
 
 def _get_cached(key: str) -> Optional[dict]:
     """Get cached value if not expired."""
@@ -29,7 +75,7 @@ def _get_cached(key: str) -> Optional[dict]:
     return None
 
 
-def _set_cache(key: str, value: dict) -> None:
+def _set_cache(key: str, value) -> None:
     """Set cache value with current timestamp."""
     _cache[key] = (value, datetime.now())
     logging.debug(f"Cached value for key: {key}")
@@ -50,19 +96,19 @@ async def fetch_event_details(event_id: int) -> Optional[dict]:
     if cached:
         return cached
 
+    await _check_rate_limit()
     url = f"{CTFTIME_API_BASE}/events/{event_id}/"
 
     try:
-        timeout = aiohttp.ClientTimeout(total=REQUEST_TIMEOUT)
-        async with aiohttp.ClientSession(timeout=timeout, headers=HEADERS) as session:
-            async with session.get(url) as response:
-                if response.status != 200:
-                    logging.error(
-                        f"HTTP error occurred while fetching event {event_id}: Status {response.status}"
-                    )
-                    return None
+        session = await _get_session()
+        async with session.get(url) as response:
+            if response.status != 200:
+                logging.error(
+                    f"HTTP error occurred while fetching event {event_id}: Status {response.status}"
+                )
+                return None
 
-                event_data = await response.json()
+            event_data = await response.json()
 
         # Basic validation and type conversion
         required_keys = [
@@ -99,7 +145,8 @@ async def fetch_event_details(event_id: int) -> Optional[dict]:
             .strip()
             .replace(" ", "-")
             .replace('"', "")
-            .replace('"', "")
+            .replace("\u201c", "")
+            .replace("\u201d", "")
         )
 
         # Ensure optional fields have defaults
@@ -108,12 +155,27 @@ async def fetch_event_details(event_id: int) -> Optional[dict]:
         event_data.setdefault("weight", 0.0)
         event_data.setdefault("description", "")
         event_data.setdefault("participants", 0)
+        event_data.setdefault("prizes", "")
+        event_data.setdefault("restrictions", "")
+        event_data.setdefault("location", "")
+        event_data.setdefault("onsite", False)
+        event_data.setdefault("logo", "")
+        event_data.setdefault("format_id", 0)
+
+        # Extract team size information
+        event_data.setdefault("team_size", {})
+        if "max_team_size" in event_data:
+            event_data["team_size"]["max"] = event_data.get("max_team_size")
+        if "min_team_size" in event_data:
+            event_data["team_size"]["min"] = event_data.get("min_team_size")
 
         # Cache the result
         _set_cache(cache_key, event_data)
 
         return event_data
 
+    except asyncio.TimeoutError:
+        logging.error(f"Timeout while fetching event {event_id}")
     except aiohttp.ClientError as e:
         logging.error(f"Client error occurred while fetching event {event_id}: {e}")
     except json.JSONDecodeError as json_err:
@@ -144,20 +206,20 @@ async def fetch_upcoming_events(
         if cached:
             return cached
 
+    await _check_rate_limit()
     url = f"{CTFTIME_API_BASE}/events/"
     params = {"limit": limit * 2 if (format_filter or min_weight) else limit}  # Fetch more if filtering
 
     try:
-        timeout = aiohttp.ClientTimeout(total=REQUEST_TIMEOUT)
-        async with aiohttp.ClientSession(timeout=timeout, headers=HEADERS) as session:
-            async with session.get(url, params=params) as response:
-                if response.status != 200:
-                    logging.error(
-                        f"HTTP error occurred while fetching upcoming events: Status {response.status}"
-                    )
-                    return []
+        session = await _get_session()
+        async with session.get(url, params=params) as response:
+            if response.status != 200:
+                logging.error(
+                    f"HTTP error occurred while fetching upcoming events: Status {response.status}"
+                )
+                return []
 
-                events_list = await response.json()
+            events_list = await response.json()
 
         processed_events = []
         for event in events_list:
@@ -202,6 +264,8 @@ async def fetch_upcoming_events(
 
         return processed_events
 
+    except asyncio.TimeoutError:
+        logging.error("Timeout while fetching upcoming events")
     except aiohttp.ClientError as e:
         logging.error(f"Client error occurred while fetching upcoming events: {e}")
     except json.JSONDecodeError as json_err:
