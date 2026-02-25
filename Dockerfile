@@ -1,10 +1,9 @@
-FROM python:3.15.0a6-slim-bookworm AS compile-image
-WORKDIR /app/
+FROM python:3.13-slim-bookworm AS build
+WORKDIR /src/
 
 # Install GCC for aiohttp build
-RUN apt-get update
-RUN apt-get -y install --no-install-recommends build-essential gcc mono-mcs
-RUN rm -rf /var/lib/apt/lists/*
+RUN apt-get update &&\
+    apt-get install -y --no-install-recommends build-essential gcc
 
 # Build & activate venv
 RUN python -m venv /opt/venv
@@ -12,25 +11,27 @@ ENV PATH="/opt/venv/bin:$PATH"
 
 # Install requirements
 COPY requirements.txt .
-RUN pip install -Ur requirements.txt
+RUN pip install --no-cache-dir -Ur requirements.txt
 
 # 2 stage build, reuse venv
-FROM python:3.15.0a6-slim-bookworm AS build-image
+FROM python:3.13-slim-bookworm AS final
 
 # Create group and user  for bot files
 RUN addgroup --system botgroup && adduser --system --ingroup botgroup bot
 
-WORKDIR /app/
+WORKDIR /src/
 
 # Reuse Venv
-COPY --from=compile-image --chown=bot:botgroup /opt/venv /opt/venv
+COPY --from=build --chown=bot:botgroup /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 # Copy files and set ownership
-COPY . /app
+ADD CTFNotifier_Discord_Bot_v2 .
+COPY .env /src/.env
+RUN mkdir -p data
 
 # Set user and access
-RUN chown -R bot:botgroup /app
+RUN chown -R bot:botgroup .
 USER bot
 
 # Volume for data persistence
