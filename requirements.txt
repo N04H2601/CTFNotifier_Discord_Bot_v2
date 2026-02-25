@@ -2,19 +2,19 @@
 # Python 3.11+ required
 
 # Discord API
-discord.py>=2.3.2
+discord.py ~= 2.3.2
 
 # Environment variables
-python-dotenv>=1.0.0
+python-dotenv ~= 1.0.0
 
 # Timezone handling
-pytz>=2024.1
+pytz ~= 2024.1
 
 # Async HTTP client (for CTFtime API)
-aiohttp>=3.9.1
+aiohttp ~= 3.9.1
 
 # Async SQLite database
-aiosqlite>=0.19.0
+aiosqlite ~= 0.19.0
 
 # Compatibility for Python 3.13+ (audioop removed)
-audioop-lts>=0.2.1
+audioop-lts ~= 0.2.1
