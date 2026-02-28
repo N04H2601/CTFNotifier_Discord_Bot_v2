@@ -101,7 +101,7 @@ docker build . -t ctfnotifier-bot-v2
 4. **Run the container:**
 
 ```sh
-docker run --name ctfnotifier --volume ctfnotifier-data:/app/data -d --network none ctfnotifier-bot-v2
+docker run --name ctfnotifier --volume ctfnotifier-data:/app/data --env-file .env -d ctfnotifier-bot-v2
 ```
 > Make sure you use a volume to keep your data between builds 😉
 
