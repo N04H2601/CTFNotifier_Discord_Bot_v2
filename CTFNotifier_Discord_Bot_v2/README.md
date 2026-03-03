@@ -28,11 +28,15 @@ CTFNotifier_Discord_Bot/
 ├── .env                  # Environment variables (TOKEN, etc.) - You need to create this!
 ├── main.py               # Main bot entry point
 ├── requirements.txt      # Python dependencies
-├── discord_bot.log       # Log file generated at runtime
+├── data/                 # Runtime data (logs + database, auto-created)
+│   ├── ctf_data.db
+│   └── discord_bot.log
 └── README.md             # This file
 ```
 
 ## 🚀 Setup & Installation
+
+### Option 1: Python (direct)
 
 1.  **Clone the Repository:**
     ```bash
@@ -41,11 +45,11 @@ CTFNotifier_Discord_Bot/
     ```
 
 2.  **Python Version:**
-    This bot was developed and tested using Python 3.11. Ensure you have a compatible Python version installed.
+    This bot was developed and tested using Python 3.11+. Ensure you have a compatible Python version installed.
 
 3.  **Create Virtual Environment (Recommended):**
     ```bash
-    python3.11 -m venv venv
+    python3 -m venv venv
     source venv/bin/activate  # On Windows use `venv\Scripts\activate`
     ```
 
@@ -53,10 +57,9 @@ CTFNotifier_Discord_Bot/
     ```bash
     pip install -r requirements.txt
     ```
-    *(Note: If you encounter issues with voice support warnings, you can optionally install `PyNaCl` if needed, but it's not required for core functionality.)*
 
 5.  **Configure Environment Variables:**
-    Create a file named `.env` in the project's root directory (`CTFNotifier_Discord_Bot/`). Add your Discord Bot Token to it:
+    Create a file named `.env` in the project's root directory. Add your Discord Bot Token to it:
     ```dotenv
     DISCORD_TOKEN=YOUR_BOT_TOKEN_HERE
     # Optional: For faster command syncing during testing/development in a single server
@@ -69,6 +72,39 @@ CTFNotifier_Discord_Bot/
     python main.py
     ```
     The bot should connect to Discord, initialize the database, load commands, and start the notification service.
+
+### Option 2: Docker
+
+1.  **Clone the Repository:**
+    ```bash
+    git clone https://github.com/N04H2601/CTFNotifier_Discord_Bot.git
+    cd CTFNotifier_Discord_Bot
+    ```
+
+2.  **Configure Environment Variables:**
+    Create a `.env` file at the project root:
+    ```dotenv
+    DISCORD_TOKEN=YOUR_BOT_TOKEN_HERE
+    # GUILD_ID=YOUR_TEST_SERVER_ID_HERE
+    ```
+
+3.  **Build the Docker image:**
+    ```bash
+    docker build -t ctfnotifier-bot .
+    ```
+
+4.  **Run the container:**
+    ```bash
+    docker run -d \
+      --name ctfnotifier \
+      --env-file .env \
+      --volume ctfnotifier-data:/app/data \
+      --restart unless-stopped \
+      ctfnotifier-bot
+    ```
+
+    The `--volume` flag persists the database and logs across container restarts.
+    The `.env` file is **not** baked into the image (excluded by `.dockerignore`).
 
 ## 🤖 Commands (Slash Commands)
 
@@ -101,5 +137,5 @@ User event data is stored locally in `/data/ctf_data.db`. This file will be crea
 *   **Raspberry Pi:** The bot is designed to be lightweight and should run on a Raspberry Pi. Resource usage will depend on the number of users and tracked events.
 *   **AI Integration:** The `/ctf_info` command is a placeholder. Future development could involve using AI to extract CTF categories (web, pwn, crypto, etc.) from event descriptions or websites.
 *   **Timezones:** All event times are currently handled and displayed in UTC.
-*   **Error Handling:** Basic error handling is included, and logs are written to `discord_bot.log`.
+*   **Error Handling:** Basic error handling is included, and logs are written to `data/discord_bot.log`.
 
