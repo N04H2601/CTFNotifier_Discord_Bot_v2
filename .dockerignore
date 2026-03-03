@@ -1,0 +1,39 @@
+# Environment variables (passed at runtime via --env-file)
+*.env
+.env.*
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+venv/
+.venv/
+env/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Data (created at runtime)
+data/
+*.db
+*.log
+
+# Docker
+Dockerfile
+docker-compose*.yml
+
+# Docs
+*.md
+LICENSE
