@@ -179,6 +179,7 @@ class SettingsCommands(commands.Cog):
         channel="The channel to receive CTF notifications"
     )
     @app_commands.default_permissions(administrator=True)
+    @app_commands.checks.has_permissions(manage_guild=True)
     async def set_notification_channel(
         self,
         interaction: discord.Interaction,
@@ -224,6 +225,7 @@ class SettingsCommands(commands.Cog):
         description="Remove the notification channel for this server (Admin only)."
     )
     @app_commands.default_permissions(administrator=True)
+    @app_commands.checks.has_permissions(manage_guild=True)
     async def remove_notification_channel(self, interaction: discord.Interaction):
         if not interaction.guild:
             await interaction.response.send_message(

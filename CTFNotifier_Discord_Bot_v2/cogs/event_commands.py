@@ -154,13 +154,14 @@ class EventCommands(commands.Cog):
             return None
 
     # --- Slash Command: Add Event from CTFtime ---
+    @app_commands.checks.cooldown(1, 15.0, key=lambda i: i.user.id)
     @app_commands.command(
         name="add",
         description="Adds a CTF event to your agenda using its CTFtime URL.",
     )
     @app_commands.describe(
         ctftime_url="The full URL of the event on CTFtime (e.g., https://ctftime.org/event/1234)",
-        teammates="Tag teammates to add to this event (they'll receive notifications too)"
+        teammates="Tag teammates to add to this event (they'll receive notifications too, max 10)"
     )
     async def add_event(
         self,
@@ -220,12 +221,12 @@ class EventCommands(commands.Cog):
         # Get event from DB to get the ID
         event = await database.get_event_by_name(event_data["event_name"])
 
-        # Parse and add teammates if provided
+        # Parse and add teammates if provided (max 10 to prevent DM spam)
         added_teammates = []
         if teammates and event:
             # Extract user mentions from the string
             mention_pattern = r"<@!?(\d+)>"
-            mentioned_ids = re.findall(mention_pattern, teammates)
+            mentioned_ids = re.findall(mention_pattern, teammates)[:10]
 
             for user_id_str in mentioned_ids:
                 member_id = int(user_id_str)
@@ -318,6 +319,7 @@ class EventCommands(commands.Cog):
         )
 
     # --- Slash Command: Add Custom Event ---
+    @app_commands.checks.cooldown(1, 15.0, key=lambda i: i.user.id)
     @app_commands.command(
         name="add_custom",
         description="Add a custom CTF event (not on CTFtime).",
@@ -415,7 +417,7 @@ class EventCommands(commands.Cog):
 
         if teammates and event:
             mention_pattern = r"<@!?(\d+)>"
-            mentioned_ids = re.findall(mention_pattern, teammates)
+            mentioned_ids = re.findall(mention_pattern, teammates)[:10]
 
             for user_id_str in mentioned_ids:
                 member_id = int(user_id_str)
@@ -653,6 +655,7 @@ class EventCommands(commands.Cog):
         return await self.event_autocomplete(interaction, current)
 
     # --- Slash Command: Add Teammate ---
+    @app_commands.checks.cooldown(3, 30.0, key=lambda i: i.user.id)
     @app_commands.command(
         name="team_add",
         description="Add a teammate to one of your events.",

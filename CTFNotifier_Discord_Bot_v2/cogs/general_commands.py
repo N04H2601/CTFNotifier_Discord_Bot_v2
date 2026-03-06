@@ -32,6 +32,7 @@ class GeneralCommands(commands.Cog):
         self.logger.info("GeneralCommands Cog initialized.")
 
     # --- Slash Command: Upcoming Events ---
+    @app_commands.checks.cooldown(1, 10.0, key=lambda i: i.user.id)
     @app_commands.command(
         name="upcoming", description="Shows upcoming CTF events from CTFtime."
     )
@@ -63,7 +64,7 @@ class GeneralCommands(commands.Cog):
             message = "Could not fetch upcoming events from CTFtime."
             if format or min_weight:
                 message += " Try removing filters or check back later."
-            await interaction.followup.send(message)
+            await interaction.followup.send(message, ephemeral=True)
             return
 
         # Build title with filters
@@ -238,6 +239,7 @@ class GeneralCommands(commands.Cog):
         await interaction.followup.send(embed=embed, ephemeral=True)
 
     # --- Slash Command: CTF Info (Search) ---
+    @app_commands.checks.cooldown(1, 10.0, key=lambda i: i.user.id)
     @app_commands.command(
         name="ctf_info",
         description="Search for upcoming CTFs by name on CTFtime."
@@ -292,6 +294,7 @@ class GeneralCommands(commands.Cog):
         await interaction.followup.send(embed=embed, ephemeral=True)
 
     # --- Slash Command: CTF Details (Full CTFtime description) ---
+    @app_commands.checks.cooldown(1, 10.0, key=lambda i: i.user.id)
     @app_commands.command(
         name="ctf_details",
         description="Get full details about a CTF from CTFtime (description, prizes, team size, etc.)."
